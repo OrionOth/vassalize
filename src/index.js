@@ -1,23 +1,13 @@
 const { ipcRenderer, shell, remote } = require("electron")
 const { Tray, Menu } = remote;
-const readline = require("readline")
 const fs = require('fs')
-const ps = require("./ps.js"),
-  scriptreader = require("./scriptreader.js");
-const EmojiConverter = require("emoji-js")
-let emoji = new EmojiConverter();
-emoji.allow_caps = true;
-emoji.img_set = "twitter";
-emoji.replace_mode = "css";
-// require("dotenv").config()
-// let tenorkey = process.env.TENORKEY
+const scriptreader = require("./scriptreader.js");
 const titlebar = require("electron-titlebar")
-let conf, confp;
+let conf
 if (!fs.existsSync("./config.json")) {
   fs.writeFileSync("./config.json", "{ }")
 } else {
   conf = require('./config.json')
-  confp = require.resolve("./config.json")
 }
 let Rsettings = require("./settings.json")
 let botActor;
@@ -79,22 +69,11 @@ function processmsg(arg) {
           url = gids[index].emoji[gids[index].emojiIds.indexOf(d)].url
         }
         let elem = `![emoji](${url})`
-        // make them bigger if message is *only* emojis
-        // ct = ct.replace(e, elem)
       })
     }
-    // emoji are getting parsed from users but not the bot itself, why the fuck
     const uEmoji = require("universal-emoji-parser")
     ct = uEmoji.parse(ct)
     ct = require("snarkdown")(ct)
-    // if(ct.match(/\:.*\:/)) ct = require("snarkdown")(ct);
-    // const { parse } = require("twemoji-parser")
-    // let twemojis = parse(ct)
-    // if(twemojis) {
-    //   for(i in twemojis) {
-    //     ct = ct.replace(ct.substr(twemojis[i].indices[0], twemojis[i].indices[1]), `<img class="emoji" src="${twemojis[i].url}">`)
-    //   }
-    // }
     ct = `<p mid="${arg.msg.id}">${ct}</p>`
 
     if (ct.includes("@everyone")) {
@@ -210,7 +189,7 @@ function fillGuildSelect(arg) { // generates and populates guild list
   gids = arg
   let q = [...document.querySelectorAll('.serverlist-item')]
   q.forEach(e => {
-    e.addEventListener("click", () => {
+    e.addEventListener("click", () => { // handles selecting a server
       id('msgin').disabled = false
       if (q[q.indexOf(e)] != q) q.splice(q.indexOf(e), 1) // if this is duplicate of another one, should remove it
       id('msgdisplay').innerHTML = ''
@@ -229,13 +208,14 @@ function fillGuildSelect(arg) { // generates and populates guild list
         e.querySelector('.channel-triangle').style.top = tdistance
       }
       id('channellist').innerHTML = `<div class="channel-label">channels</div>`
+      id("msgin").focus();
       let server = gids[e.getAttribute('data-index')]
-      server.channels.forEach(e => { // server.channels.forEach
+      server.channels.forEach(e => {
         let elm = document.createElement("div")
         elm.classList.add("channel-item")
         elm.textContent = "#" + e.name
         elm.setAttribute('data-id', e.id)
-        elm.addEventListener("click", () => {
+        elm.addEventListener("click", () => { // handles selecting a channel?
           currentchannel = e.id
           q = [...document.querySelectorAll(".activechannel")]
           q.forEach(e => {
@@ -327,8 +307,8 @@ ipcRenderer.on("validtoken", (event, args) => { // the *one* ipc i will use
   fillStatus(args.bot);
   setTimeout(() => {
     // id('userd').innerHTML = `acting as <span style="cursor:pointer;" onclick="ipcRenderer.send('addwindow', {url:'./status.html'})"><b>${args.bot.full}</b></span>`
-    document.title = args.bot.full
-    id('titlebar-title').textContent = args.bot.full
+    document.title = "vassalize: "+args.bot.full
+    id('titlebar-title').textContent = "vassalize: "+args.bot.full
     // id('titlebar-title').textContent = args.bot.full
     id('bs-helper').innerText = ''
     fillGuildSelect(args.guildInfo)
@@ -444,9 +424,22 @@ id('clearcache').addEventListener("click", () => {
   document.querySelector("label[for='clearcache']").style.display = 'block'
   setTimeout(() => document.querySelector("label[for='clearcache']").style.display = 'none', 1500)
 })
+id('viewtokens').addEventListener('click', () => {
+  ipcRenderer.send('addwindow', {url: "cachedtokens.html"})
+})
 ipcRenderer.on("messagedeleted", (event, id) => {
   let messageElement = document.querySelector(`p[mid="${id}"]`)
-  if (messageElement) messageElement.innerHTML += `<span class="deleted-reminder">(deleted)</span>`
+  if (messageElement) messageElement.innerHTML += `<span class="message-reminder">(deleted)</span>`
+})
+ipcRenderer.on("messageupdated", (event, message) => {
+  let messageElement = document.querySelector(`p[mid="${message.id}"]`)
+  if(messageElement) {
+    let oldcontent = messageElement.innerText.replace("(edited, hover to see previous content)", '');
+    messageElement.innerText = message.content;
+    console.log(messageElement.innerHTML)
+    messageElement.innerHTML += `<span class="message-reminder" title="${oldcontent}">(edited, hover to see previous content)</span>`
+    console.log(messageElement.innerHTML)
+  }
 })
 id("custom-script-input").addEventListener("change", e => {
   scriptreader.processFiles(e)

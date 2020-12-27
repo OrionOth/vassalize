@@ -8,19 +8,13 @@ if (!fs.existsSync("./config.json")) {
 }
 let Rsettings = require("./settings.json")
 require("dotenv").config()
-let settings = {
-  mode: "user", // define actions available (user is user-controlled)
-  defaultprefix: ".",
-  prefix: "."
-}
 const clearmodule = require("clear-module")
 let uinfo = {}
 let window;
 let lastmessage;
 let isLoggedIn = false
 let gids = []
-let cids = []
-let tagx = /.*#[0-9]{4}/;
+let cids = [];
 let uidx = /<@!\d+>/g;
 let client;
 let scripts = require("./scripts.json")
@@ -32,18 +26,18 @@ function logFile(e) {
 
 exports.init = function (win, tok) {
   client = new Discord.Client()
-  ipcMain.on("refreshScripts", () => scripts = require("./scripts.json"))
   window = win;
   client.on("ready", () => {
     if (isLoggedIn) return;
     if(Rsettings.status) client.user.setPresence(Rsettings.status)
     if (enabledscripts.length > 0 && Rsettings.csenabled) {
-      window.webContents.send("refreshScript")
       enabledscripts.forEach(e => {
         try {
+          clearmodule(e.path)
           let script = require(e.path)
           if (script.init) var g = script.init(client)
           logFile("[Scripts] " + e.name + " started successfully")
+          console.log(`[Scripts] ${e.name} started successfully`)
           if (g) {
             logFile(e.name + " > " + g)
           }
@@ -93,9 +87,11 @@ exports.init = function (win, tok) {
       discrim: client.user.discriminator,
       full: botuser,
       pfp: client.user.avatarURL(),
-      guildNumber: client.guilds.cache.array().length
+      guildNumber: client.guilds.cache.array().length,
+      id: client.user.id
     }
-    if (conf) tokens = conf;
+    clearmodule("./config.json")
+    tokens = require("./config.json")
     tokens[botuser] = tok
     fs.writeFileSync("./config.json", JSON.stringify(tokens));
     window.webContents.send("validtoken", {
@@ -109,6 +105,9 @@ exports.init = function (win, tok) {
   client.on("messageDelete", message => {
     window.webContents.send("messagedeleted", message.id)
   });
+  client.on("messageUpdate", (oldMessage, newMessage) => {
+    window.webContents.send("messageupdated", {id: oldMessage.id, content: newMessage.content})
+  })
   client.login(tok)
     .catch(err => {
       window.webContents.send('invalidtoken')
@@ -163,13 +162,15 @@ exports.init = function (win, tok) {
       }
     }
   })
+  let tagx = /@.*#[0-9]{4}/;
   ipcMain.on("msgin", (event, arg) => {
     if (arg.msg.toString().match(tagx)) { // is ping
       let un = arg.msg.toString().match(tagx)[0].toString().split("#")[0].replace("@", '')
-      let g = client.channels.cache.get(arg.channel).guild.members.cache.filter(x => x.user.username === un).array()
-      arg.msg = arg.msg.replace(tagx, g[0].user)
+      let g = client.users.cache.find(x => x.username === un)
+      console.log(un, g)
+      arg.msg = arg.msg.replace(`@${g.username}#${g.discriminator}`, g)
     }
-    if (arg.msg.toString().includes("/shrug")) arg.msg = arg.msg.replace("/shrug", "¯\_(ツ)_/¯")
+    if (arg.msg.toString().includes("/shrug")) arg.msg = arg.msg.replace(/\/shrug/g, "¯\_(ツ)_/¯")
     client.channels.cache.get(arg.channel).send(arg.msg)
   })
   function process(msg, iscached = false) {
@@ -183,6 +184,7 @@ exports.init = function (win, tok) {
           if (g) logFile(e.name + " > " + g)
         } catch(err) {
           logFile("[Scripts] " + e.name + " was unable to receive a message")
+          console.log(`[Scripts] ${e.name} was unable to receive a message`)
           throw err;
         }
       })
